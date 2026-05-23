@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { Transaction, TransactionFilters, PaginatedResponse, DashboardStats, CategorySummary, MonthlyTrend } from "@/types"
 import type { TransactionType } from "@/types"
+import { MOCK_TRANSACTIONS } from "@/data/mock"
 
 interface TransactionState {
   transactions: Transaction[]
@@ -33,7 +34,7 @@ interface TransactionState {
 }
 
 export const useTransactionStore = create<TransactionState>((set) => ({
-  transactions: [],
+  transactions: MOCK_TRANSACTIONS,
   isLoading: false,
   error: null,
   filters: {},
