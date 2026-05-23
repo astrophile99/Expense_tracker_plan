@@ -1,86 +1,160 @@
-import { BaseRepository, type FindAllOptions } from "./base"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { SupabaseRepository, mapRow, type FindAllOptions } from "./supabase-repository"
 import type { Category, PaginatedResponse } from "@/types"
-import { NotFoundError, BusinessRuleError } from "@/config/errors"
+import { BusinessRuleError } from "@/config/errors"
+import { mapSupabaseError } from "@/lib/supabase-error"
 
-export class CategoryRepository extends BaseRepository<Category> {
+export class CategoryRepository extends SupabaseRepository<Category> {
   protected entityName = "Category"
+  protected tableName = "categories"
+  protected supabase: SupabaseClient
 
-  private store: Category[] = []
+  constructor(supabase: SupabaseClient) {
+    super()
+    this.supabase = supabase
+  }
 
   async findAll(options?: FindAllOptions): Promise<PaginatedResponse<Category>> {
-    let filtered = [...this.store]
+    const page = options?.pagination?.page ?? 1
+    const limit = options?.pagination?.limit ?? 20
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    let query = this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact" })
 
     if (options?.filters) {
       const { workspaceId, userId, group, isArchived } = options.filters as Record<string, unknown>
-      if (workspaceId) filtered = filtered.filter((c) => c.workspaceId === workspaceId)
-      if (userId) filtered = filtered.filter((c) => c.userId === userId)
-      if (group) filtered = filtered.filter((c) => c.group === group)
-      if (isArchived !== undefined) filtered = filtered.filter((c) => c.isArchived === isArchived)
+      if (workspaceId) query = query.eq("workspace_id", workspaceId as string)
+      if (userId) query = query.eq("user_id", userId as string)
+      if (group) query = query.eq("group", group as string)
+      if (isArchived !== undefined) query = query.eq("is_archived", isArchived as boolean)
     }
 
-    filtered.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+    query = query.order("sort_order", { ascending: true })
+    query = query.range(from, to)
 
-    return this.applyPagination(filtered, options?.pagination)
+    const { data, count, error } = await query
+    if (error) throw mapSupabaseError(error)
+
+    const items = (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as Category)
+
+    return {
+      data: items,
+      total: count ?? 0,
+      page,
+      limit,
+      totalPages: Math.ceil((count ?? 0) / limit),
+      hasNextPage: page * limit < (count ?? 0),
+      hasPrevPage: page > 1,
+    }
   }
 
   async findById(id: string): Promise<Category | null> {
-    return this.store.find((c) => c.id === id) ?? null
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (error) {
+      if (error.code === "PGRST116") return null
+      throw mapSupabaseError(error)
+    }
+
+    return mapRow<Category>(data as Record<string, unknown>)
   }
 
   async create(data: Partial<Category>): Promise<Category> {
-    const now = this.timestamps()
-    const category: Category = {
-      id: this.generateId(),
-      name: "",
-      icon: "circle",
-      color: "#6366f1",
-      group: "other",
-      isDefault: false,
-      sortOrder: this.store.length,
-      isArchived: false,
-      ...data,
-      ...now,
-    } as Category
+    const { data: result, error } = await this.supabase
+      .from(this.tableName)
+      .insert(data as Record<string, unknown>)
+      .select()
+      .single()
 
-    this.store.push(category)
-    return category
+    if (error) throw mapSupabaseError(error)
+
+    return mapRow<Category>(result as Record<string, unknown>)
   }
 
   async update(id: string, data: Partial<Category>): Promise<Category> {
-    const index = this.store.findIndex((c) => c.id === id)
-    if (index === -1) throw new NotFoundError("Category", id)
+    const existing = await this.findById(id)
+    if (!existing) {
+      throw new Error(`Category with id "${id}" not found`)
+    }
 
-    const existing = this.store[index]
     if (existing.isDefault && data.isArchived) {
       throw new BusinessRuleError("Cannot archive a default category")
     }
 
-    const updated = { ...existing, ...this.touch(data) } as Category
-    this.store[index] = updated
-    return updated
+    const { data: result, error } = await this.supabase
+      .from(this.tableName)
+      .update(data as Record<string, unknown>)
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) throw mapSupabaseError(error)
+
+    return mapRow<Category>(result as Record<string, unknown>)
   }
 
   async delete(id: string): Promise<void> {
-    const index = this.store.findIndex((c) => c.id === id)
-    if (index === -1) throw new NotFoundError("Category", id)
-    if (this.store[index].isDefault) {
+    const existing = await this.findById(id)
+    if (!existing) return
+
+    if (existing.isDefault) {
       throw new BusinessRuleError("Cannot delete a default category")
     }
-    this.store.splice(index, 1)
+
+    const { error } = await this.supabase
+      .from(this.tableName)
+      .delete()
+      .eq("id", id)
+
+    if (error) throw mapSupabaseError(error)
   }
 
   async count(filters?: Record<string, unknown>): Promise<number> {
-    let filtered = [...this.store]
-    if (filters?.workspaceId) filtered = filtered.filter((c) => c.workspaceId === filters.workspaceId)
-    if (filters?.userId) filtered = filtered.filter((c) => c.userId === filters.userId)
-    return filtered.length
+    let query = this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact", head: true })
+
+    if (filters) {
+      for (const [key, value] of Object.entries(filters)) {
+        query = query.eq(key, value)
+      }
+    }
+
+    const { count, error } = await query
+    if (error) throw mapSupabaseError(error)
+    return count ?? 0
   }
 
   async getByGroup(group: string): Promise<Category[]> {
-    return this.store.filter((c) => c.group === group && !c.isArchived)
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("group", group)
+      .eq("is_archived", false)
+      .order("sort_order", { ascending: true })
+
+    if (error) throw mapSupabaseError(error)
+
+    return (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as Category)
   }
 
   async getDefaults(): Promise<Category[]> {
-    return this.store.filter((c) => c.isDefault && !c.isArchived)
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("is_default", true)
+      .eq("is_archived", false)
+      .order("sort_order", { ascending: true })
+
+    if (error) throw mapSupabaseError(error)
+
+    return (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as Category)
   }
 }

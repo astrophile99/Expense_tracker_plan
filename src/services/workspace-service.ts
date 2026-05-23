@@ -26,7 +26,7 @@ export class WorkspaceService {
       return { success: false, error: { code: "WORKSPACE_NOT_FOUND", message: "Workspace not found", statusCode: 404 } }
     }
 
-    const role = this.repo.getUserRole(id, userId)
+    const role = await this.repo.getUserRole(id, userId)
     if (!role) {
       return { success: false, error: { code: "FORBIDDEN", message: "Not a member of this workspace", statusCode: 403 } }
     }
@@ -74,7 +74,7 @@ export class WorkspaceService {
   }
 
   async update(id: string, input: UpdateWorkspaceInput, userId: string): Promise<ApiResult<Workspace>> {
-    const role = this.repo.getUserRole(id, userId)
+    const role = await this.repo.getUserRole(id, userId)
     if (!role || (role !== WorkspaceRole.OWNER && role !== WorkspaceRole.ADMIN)) {
       return { success: false, error: { code: "FORBIDDEN", message: "Only admins can update workspace", statusCode: 403 } }
     }
@@ -105,7 +105,7 @@ export class WorkspaceService {
   }
 
   async delete(id: string, userId: string): Promise<ApiResult<void>> {
-    const role = this.repo.getUserRole(id, userId)
+    const role = await this.repo.getUserRole(id, userId)
     if (role !== WorkspaceRole.OWNER) {
       return { success: false, error: { code: "FORBIDDEN", message: "Only owners can delete workspace", statusCode: 403 } }
     }
@@ -123,7 +123,7 @@ export class WorkspaceService {
   }
 
   async getMembers(workspaceId: string, userId: string): Promise<ApiResult<WorkspaceMember[]>> {
-    const role = this.repo.getUserRole(workspaceId, userId)
+    const role = await this.repo.getUserRole(workspaceId, userId)
     if (!role) {
       return { success: false, error: { code: "FORBIDDEN", message: "Not a member of this workspace", statusCode: 403 } }
     }
@@ -133,7 +133,7 @@ export class WorkspaceService {
   }
 
   async inviteMember(workspaceId: string, input: InviteMemberInput, userId: string): Promise<ApiResult<WorkspaceMember>> {
-    const role = this.repo.getUserRole(workspaceId, userId)
+    const role = await this.repo.getUserRole(workspaceId, userId)
     if (!role || (role !== WorkspaceRole.OWNER && role !== WorkspaceRole.ADMIN)) {
       return { success: false, error: { code: "FORBIDDEN", message: "Only admins can invite members", statusCode: 403 } }
     }
@@ -165,12 +165,12 @@ export class WorkspaceService {
   }
 
   async removeMember(workspaceId: string, targetUserId: string, userId: string): Promise<ApiResult<void>> {
-    const role = this.repo.getUserRole(workspaceId, userId)
+    const role = await this.repo.getUserRole(workspaceId, userId)
     if (!role || (role !== WorkspaceRole.OWNER && role !== WorkspaceRole.ADMIN)) {
       return { success: false, error: { code: "FORBIDDEN", message: "Only admins can remove members", statusCode: 403 } }
     }
 
-    const targetRole = this.repo.getUserRole(workspaceId, targetUserId)
+    const targetRole = await this.repo.getUserRole(workspaceId, targetUserId)
     if (targetRole === WorkspaceRole.OWNER) {
       return { success: false, error: { code: "CANNOT_REMOVE_OWNER", message: "Cannot remove the workspace owner", statusCode: 422 } }
     }
@@ -188,7 +188,7 @@ export class WorkspaceService {
   }
 
   async updateMemberRole(workspaceId: string, targetUserId: string, newRole: WorkspaceRole, userId: string): Promise<ApiResult<WorkspaceMember>> {
-    const role = this.repo.getUserRole(workspaceId, userId)
+    const role = await this.repo.getUserRole(workspaceId, userId)
     if (!role || (role !== WorkspaceRole.OWNER && role !== WorkspaceRole.ADMIN)) {
       return { success: false, error: { code: "FORBIDDEN", message: "Only admins can change roles", statusCode: 403 } }
     }

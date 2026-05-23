@@ -2,6 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { BaseRepository, type FindAllOptions, type Repository } from "./base"
 import type { Timestamps, PaginatedResponse } from "@/types"
 import { NotFoundError } from "@/config/errors"
+import { mapSupabaseError } from "@/lib/supabase-error"
+
+export type { FindAllOptions }
 
 function toSnakeCase(str: string): string {
   return str.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
@@ -54,7 +57,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
 
     const { data, count, error } = await query
 
-    if (error) throw error
+    if (error) throw mapSupabaseError(error)
 
     const items = (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as T)
 
@@ -78,7 +81,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
 
     if (error) {
       if (error.code === "PGRST116") return null
-      throw error
+      throw mapSupabaseError(error)
     }
 
     return mapRow<T>(data as Record<string, unknown>)
@@ -92,7 +95,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
       .select()
       .single()
 
-    if (error) throw error
+    if (error) throw mapSupabaseError(error)
 
     return mapRow<T>(result as Record<string, unknown>)
   }
@@ -108,7 +111,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
 
     if (error) {
       if (error.code === "PGRST116") throw new NotFoundError(this.entityName, id)
-      throw error
+      throw mapSupabaseError(error)
     }
 
     return mapRow<T>(result as Record<string, unknown>)
@@ -120,7 +123,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
       .delete()
       .eq("id", id)
 
-    if (error) throw error
+    if (error) throw mapSupabaseError(error)
   }
 
   async count(filters?: Record<string, unknown>): Promise<number> {
@@ -136,7 +139,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
 
     const { count, error } = await query
 
-    if (error) throw error
+    if (error) throw mapSupabaseError(error)
 
     return count ?? 0
   }
@@ -148,7 +151,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
       .eq(toSnakeCase(field), value)
       .maybeSingle()
 
-    if (error) throw error
+    if (error) throw mapSupabaseError(error)
     if (!data) return null
 
     return mapRow<T>(data as Record<string, unknown>)
@@ -163,7 +166,7 @@ export abstract class SupabaseRepository<T extends Timestamps>
 
     const { data, error } = await query.maybeSingle()
 
-    if (error) throw error
+    if (error) throw mapSupabaseError(error)
     if (!data) return null
 
     return mapRow<T>(data as Record<string, unknown>)

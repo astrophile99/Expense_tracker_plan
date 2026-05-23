@@ -1,43 +1,89 @@
-import { BaseRepository, type FindAllOptions } from "./base"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { SupabaseRepository, mapRow, type FindAllOptions } from "./supabase-repository"
 import type { ActivityLog, PaginatedResponse } from "@/types"
-import { ActivityType } from "@/types"
+import { mapSupabaseError } from "@/lib/supabase-error"
 
-export class ActivityRepository extends BaseRepository<ActivityLog> {
+export class ActivityRepository extends SupabaseRepository<ActivityLog> {
   protected entityName = "ActivityLog"
+  protected tableName = "activity_logs"
+  protected supabase: SupabaseClient
 
-  private store: ActivityLog[] = []
+  constructor(supabase: SupabaseClient) {
+    super()
+    this.supabase = supabase
+  }
 
   async findAll(options?: FindAllOptions): Promise<PaginatedResponse<ActivityLog>> {
-    let filtered = [...this.store]
+    const page = options?.pagination?.page ?? 1
+    const limit = options?.pagination?.limit ?? 20
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    let query = this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact" })
 
     if (options?.filters) {
       const { workspaceId, userId, type } = options.filters as Record<string, unknown>
-      if (workspaceId) filtered = filtered.filter((a) => a.workspaceId === workspaceId)
-      if (userId) filtered = filtered.filter((a) => a.userId === userId)
-      if (type) filtered = filtered.filter((a) => a.type === type)
+      if (workspaceId) query = query.eq("workspace_id", workspaceId as string)
+      if (userId) query = query.eq("user_id", userId as string)
+      if (type) query = query.eq("type", type as string)
     }
 
-    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    query = query.order("created_at", { ascending: false })
+    query = query.range(from, to)
 
-    return this.applyPagination(filtered, options?.pagination)
+    const { data, count, error } = await query
+    if (error) throw mapSupabaseError(error)
+
+    const items = (data ?? []).map((row) => {
+      const log = mapRow(row as Record<string, unknown>) as ActivityLog
+      return log
+    })
+
+    return {
+      data: items,
+      total: count ?? 0,
+      page,
+      limit,
+      totalPages: Math.ceil((count ?? 0) / limit),
+      hasNextPage: page * limit < (count ?? 0),
+      hasPrevPage: page > 1,
+    }
   }
 
   async findById(id: string): Promise<ActivityLog | null> {
-    return this.store.find((a) => a.id === id) ?? null
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (error) {
+      if (error.code === "PGRST116") return null
+      throw mapSupabaseError(error)
+    }
+
+    return mapRow<ActivityLog>(data as Record<string, unknown>)
   }
 
   async create(data: Partial<ActivityLog>): Promise<ActivityLog> {
-    const log: ActivityLog = {
-      id: this.generateId(),
-      userId: data.userId!,
-      type: data.type as ActivityType,
+    const dbData: Record<string, unknown> = {
+      user_id: data.userId,
+      workspace_id: data.workspaceId ?? null,
+      type: data.type,
       metadata: data.metadata ?? {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     }
 
-    this.store.unshift(log)
-    return log
+    const { data: result, error } = await this.supabase
+      .from(this.tableName)
+      .insert(dbData)
+      .select()
+      .single()
+
+    if (error) throw mapSupabaseError(error)
+
+    return mapRow<ActivityLog>(result as Record<string, unknown>)
   }
 
   async update(_id: string, _data: Partial<ActivityLog>): Promise<ActivityLog> {
@@ -49,22 +95,44 @@ export class ActivityRepository extends BaseRepository<ActivityLog> {
   }
 
   async count(filters?: Record<string, unknown>): Promise<number> {
-    let filtered = [...this.store]
-    if (filters?.workspaceId) filtered = filtered.filter((a) => a.workspaceId === filters.workspaceId)
-    return filtered.length
+    let query = this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact", head: true })
+
+    if (filters) {
+      for (const [key, value] of Object.entries(filters)) {
+        query = query.eq(key, value)
+      }
+    }
+
+    const { count, error } = await query
+    if (error) throw mapSupabaseError(error)
+    return count ?? 0
   }
 
   async getByWorkspace(workspaceId: string, limit = 20): Promise<ActivityLog[]> {
-    return this.store
-      .filter((a) => a.workspaceId === workspaceId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit)
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(limit)
+
+    if (error) throw mapSupabaseError(error)
+
+    return (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as ActivityLog)
   }
 
   async getByUser(userId: string, limit = 20): Promise<ActivityLog[]> {
-    return this.store
-      .filter((a) => a.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit)
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(limit)
+
+    if (error) throw mapSupabaseError(error)
+
+    return (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as ActivityLog)
   }
 }

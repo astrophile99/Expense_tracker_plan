@@ -1,11 +1,10 @@
 import { BudgetRepository, TransactionRepository } from "@/repositories"
 import { ActivityService } from "./activity-service"
 import { NotificationService } from "./notification-service"
-import type { Budget, ApiResult, Transaction } from "@/types"
+import type { Budget, ApiResult } from "@/types"
 import type { CreateBudgetInput, UpdateBudgetInput } from "@/schemas/validation"
-import { ActivityType, NotificationType, TransactionType } from "@/types"
+import { ActivityType, NotificationType } from "@/types"
 import { createBudgetSchema, updateBudgetSchema } from "@/schemas/validation"
-import { appConfig } from "@/config/app"
 
 export class BudgetService {
   constructor(
@@ -15,10 +14,23 @@ export class BudgetService {
     private notificationService: NotificationService
   ) {}
 
-  private enrichBudget(budget: Budget, transactions: Transaction[]): Budget & { spent: number; remaining: number; percentageUsed: number } {
-    const spent = transactions
-      .filter((t) => t.type === TransactionType.EXPENSE && t.categoryId === budget.categoryId)
-      .reduce((sum, t) => sum + t.amount, 0)
+  private async enrichBudget(budget: Budget): Promise<Budget & { spent: number; remaining: number; percentageUsed: number }> {
+    const now = new Date()
+    const startDate = new Date(
+      budget.startDate ?? new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    ).toISOString()
+    const endDate = budget.endDate
+      ? new Date(budget.endDate).toISOString()
+      : new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString()
+
+    const totals = await this.transactionRepo.getExpenseTotals(
+      budget.userId,
+      [budget.categoryId],
+      startDate,
+      endDate
+    )
+
+    const spent = totals[budget.categoryId] ?? 0
 
     return {
       ...budget,
@@ -33,7 +45,7 @@ export class BudgetService {
       filters: { userId, workspaceId },
     })
 
-    const enriched = result.data.map((b) => this.enrichBudget(b, this.transactionRepo.getStore()))
+    const enriched = await Promise.all(result.data.map((b) => this.enrichBudget(b)))
 
     return { success: true, data: enriched }
   }
@@ -44,7 +56,7 @@ export class BudgetService {
       return { success: false, error: { code: "BUDGET_NOT_FOUND", message: "Budget not found", statusCode: 404 } }
     }
 
-    const enriched = this.enrichBudget(budget, this.transactionRepo.getStore())
+    const enriched = await this.enrichBudget(budget)
     return { success: true, data: enriched }
   }
 
@@ -119,7 +131,7 @@ export class BudgetService {
     let alertCount = 0
 
     for (const budget of result.data) {
-      const enriched = this.enrichBudget(budget, this.transactionRepo.getStore())
+      const enriched = await this.enrichBudget(budget)
       if (enriched.percentageUsed >= (enriched.alertThreshold ?? 80)) {
         alertCount++
         await this.notificationService.create({

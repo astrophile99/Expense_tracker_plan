@@ -1,6 +1,7 @@
 export { BaseRepository } from "./base"
 export type { FindAllOptions, Repository } from "./base"
-export { SupabaseRepository, mapRow } from "./supabase-repository"
+export { SupabaseRepository, mapRow, mapToDb } from "./supabase-repository"
+export type { FindAllOptions as SupabaseFindAllOptions } from "./supabase-repository"
 export { TransactionRepository } from "./transaction-repository"
 export { WorkspaceRepository } from "./workspace-repository"
 export { CategoryRepository } from "./category-repository"

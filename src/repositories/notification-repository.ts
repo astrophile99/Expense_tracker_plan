@@ -1,67 +1,133 @@
-import { BaseRepository, type FindAllOptions } from "./base"
+import type { SupabaseClient } from "@supabase/supabase-js"
+import { SupabaseRepository, mapRow, type FindAllOptions } from "./supabase-repository"
 import type { Notification, PaginatedResponse } from "@/types"
 import { NotFoundError } from "@/config/errors"
+import { mapSupabaseError } from "@/lib/supabase-error"
 
-export class NotificationRepository extends BaseRepository<Notification> {
+export class NotificationRepository extends SupabaseRepository<Notification> {
   protected entityName = "Notification"
+  protected tableName = "notifications"
+  protected supabase: SupabaseClient
 
-  private store: Notification[] = []
+  constructor(supabase: SupabaseClient) {
+    super()
+    this.supabase = supabase
+  }
 
   async findAll(options?: FindAllOptions): Promise<PaginatedResponse<Notification>> {
-    let filtered = [...this.store]
+    const page = options?.pagination?.page ?? 1
+    const limit = options?.pagination?.limit ?? 20
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    let query = this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact" })
 
     if (options?.filters) {
       const { userId, type, isRead } = options.filters as Record<string, unknown>
-      if (userId) filtered = filtered.filter((n) => n.userId === userId)
-      if (type) filtered = filtered.filter((n) => n.type === type)
-      if (isRead !== undefined) filtered = filtered.filter((n) => n.isRead === isRead)
+      if (userId) query = query.eq("user_id", userId as string)
+      if (type) query = query.eq("type", type as string)
+      if (isRead !== undefined) query = query.eq("is_read", isRead as boolean)
     }
 
-    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    query = query.order("created_at", { ascending: false })
+    query = query.range(from, to)
 
-    return this.applyPagination(filtered, options?.pagination)
+    const { data, count, error } = await query
+    if (error) throw mapSupabaseError(error)
+
+    const items = (data ?? []).map((row) => mapRow(row as Record<string, unknown>) as Notification)
+
+    return {
+      data: items,
+      total: count ?? 0,
+      page,
+      limit,
+      totalPages: Math.ceil((count ?? 0) / limit),
+      hasNextPage: page * limit < (count ?? 0),
+      hasPrevPage: page > 1,
+    }
   }
 
   async findById(id: string): Promise<Notification | null> {
-    return this.store.find((n) => n.id === id) ?? null
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (error) {
+      if (error.code === "PGRST116") return null
+      throw mapSupabaseError(error)
+    }
+
+    return mapRow<Notification>(data as Record<string, unknown>)
   }
 
   async create(data: Partial<Notification>): Promise<Notification> {
-    const notification: Notification = {
-      id: this.generateId(),
-      userId: data.userId!,
-      type: data.type!,
-      title: data.title!,
-      message: data.message!,
-      isRead: false,
-      actionUrl: data.actionUrl,
-      actionLabel: data.actionLabel,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    const dbData: Record<string, unknown> = {
+      user_id: data.userId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      action_url: data.actionUrl ?? null,
+      action_label: data.actionLabel ?? null,
     }
 
-    this.store.unshift(notification)
-    return notification
+    const { data: result, error } = await this.supabase
+      .from(this.tableName)
+      .insert(dbData)
+      .select()
+      .single()
+
+    if (error) throw mapSupabaseError(error)
+
+    return mapRow<Notification>(result as Record<string, unknown>)
   }
 
   async update(id: string, data: Partial<Notification>): Promise<Notification> {
-    const index = this.store.findIndex((n) => n.id === id)
-    if (index === -1) throw new NotFoundError("Notification", id)
-    const updated = { ...this.store[index], ...data }
-    this.store[index] = updated
-    return updated
+    const dbData: Record<string, unknown> = {}
+    if (data.isRead !== undefined) dbData.is_read = data.isRead
+
+    const { data: result, error } = await this.supabase
+      .from(this.tableName)
+      .update(dbData)
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      if (error.code === "PGRST116") throw new NotFoundError(this.entityName, id)
+      throw mapSupabaseError(error)
+    }
+
+    return mapRow<Notification>(result as Record<string, unknown>)
   }
 
   async delete(id: string): Promise<void> {
-    const index = this.store.findIndex((n) => n.id === id)
-    if (index === -1) throw new NotFoundError("Notification", id)
-    this.store.splice(index, 1)
+    const { error } = await this.supabase
+      .from(this.tableName)
+      .delete()
+      .eq("id", id)
+
+    if (error) throw mapSupabaseError(error)
   }
 
   async count(filters?: Record<string, unknown>): Promise<number> {
-    let filtered = [...this.store]
-    if (filters?.userId) filtered = filtered.filter((n) => n.userId === filters.userId)
-    return filtered.length
+    let query = this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact", head: true })
+
+    if (filters) {
+      for (const [key, value] of Object.entries(filters)) {
+        query = query.eq(key, value)
+      }
+    }
+
+    const { count, error } = await query
+    if (error) throw mapSupabaseError(error)
+    return count ?? 0
   }
 
   async markAsRead(id: string): Promise<Notification> {
@@ -69,18 +135,25 @@ export class NotificationRepository extends BaseRepository<Notification> {
   }
 
   async markAllAsRead(userId: string): Promise<number> {
-    let count = 0
-    this.store = this.store.map((n) => {
-      if (n.userId === userId && !n.isRead) {
-        count++
-        return { ...n, isRead: true }
-      }
-      return n
-    })
-    return count
+    const { data, error } = await this.supabase
+      .from(this.tableName)
+      .update({ is_read: true })
+      .eq("user_id", userId)
+      .eq("is_read", false)
+      .select()
+
+    if (error) throw mapSupabaseError(error)
+    return data?.length ?? 0
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.store.filter((n) => n.userId === userId && !n.isRead).length
+    const { count, error } = await this.supabase
+      .from(this.tableName)
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_read", false)
+
+    if (error) throw mapSupabaseError(error)
+    return count ?? 0
   }
 }
