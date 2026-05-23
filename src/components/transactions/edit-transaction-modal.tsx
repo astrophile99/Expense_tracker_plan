@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { TransactionForm } from "./transaction-form"
 import type { Transaction, Category } from "@/types"
-import { TransactionType, TransactionVisibility } from "@/types"
+import { TransactionType, TransactionVisibility, PaymentMethod } from "@/types"
 import { useTransactionStore } from "@/store"
 import { MOCK_CATEGORIES } from "@/data/mock"
 import { useUIStore } from "@/store"
@@ -42,7 +42,7 @@ export function EditTransactionModal({ open, onOpenChange, transaction, categori
       categoryId: data.categoryId,
       description: data.description,
       notes: data.notes,
-      paymentMethod: data.paymentMethod,
+      paymentMethod: data.paymentMethod as PaymentMethod | undefined,
       transactionDate: data.transactionDate,
       visibility: data.visibility,
       isRecurring: data.isRecurring,

@@ -13,7 +13,7 @@ import { DatePicker } from "./date-picker"
 import { PaymentMethodSelector } from "./payment-method-selector"
 import { VisibilitySelector } from "./visibility-selector"
 import type { Transaction, Category } from "@/types"
-import { TransactionType, TransactionVisibility } from "@/types"
+import { TransactionType, TransactionVisibility, PaymentMethod } from "@/types"
 import { cn } from "@/lib/utils"
 import { TRANSACTION_COLORS } from "@/constants/theme"
 import { formatCurrency } from "@/lib/utils"
@@ -53,7 +53,7 @@ export function TransactionForm({ initialData, categories, onSubmit, onCancel, i
   const [description, setDescription] = useState(initialData?.description ?? "")
   const [categoryId, setCategoryId] = useState(initialData?.categoryId ?? "")
   const [date, setDate] = useState(initialData?.transactionDate ?? new Date().toISOString())
-  const [paymentMethod, setPaymentMethod] = useState(initialData?.paymentMethod ?? "")
+  const [paymentMethod, setPaymentMethod] = useState<string>(initialData?.paymentMethod ?? "")
   const [notes, setNotes] = useState(initialData?.notes ?? "")
   const [isRecurring, setIsRecurring] = useState(initialData?.isRecurring ?? false)
   const [visibility, setVisibility] = useState<TransactionVisibility>(initialData?.visibility ?? TransactionVisibility.PRIVATE)

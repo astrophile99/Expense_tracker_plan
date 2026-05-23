@@ -1,32 +1,49 @@
-import type { TransactionType, TransactionVisibility, WorkspaceRole, ActivityType, RecurrenceFrequency, NotificationType } from "./enums"
+import type {
+  TransactionType, TransactionVisibility, WorkspaceRole,
+  ActivityType, RecurrenceFrequency, NotificationType,
+  BudgetPeriod, PaymentMethod, InvitationStatus, Currency,
+} from "./enums"
 
-export interface User {
-  id: string
-  email: string
+export interface Timestamps {
   createdAt: string
   updatedAt: string
 }
 
-export interface Profile {
+export interface SoftDeletable {
+  deletedAt?: string
+}
+
+// ──────────────────────────────────────────
+// User & Profile
+// ──────────────────────────────────────────
+
+export interface User extends Timestamps {
+  id: string
+  email: string
+}
+
+export interface Profile extends Timestamps {
   id: string
   userId: string
   fullName: string
   avatarUrl?: string
-  currency: string
+  currency: Currency
   timezone: string
-  createdAt: string
-  updatedAt: string
+  locale: string
 }
 
-export interface Workspace {
+// ──────────────────────────────────────────
+// Workspace
+// ──────────────────────────────────────────
+
+export interface Workspace extends Timestamps {
   id: string
   name: string
   description?: string
   icon?: string
   color?: string
   createdBy: string
-  createdAt: string
-  updatedAt: string
+  memberCount?: number
 }
 
 export interface WorkspaceMember {
@@ -35,11 +52,26 @@ export interface WorkspaceMember {
   userId: string
   role: WorkspaceRole
   joinedAt: string
+  invitedBy?: string
   user?: User
   profile?: Profile
 }
 
-export interface Category {
+export interface WorkspaceInvitation extends Timestamps {
+  id: string
+  workspaceId: string
+  email: string
+  role: WorkspaceRole
+  invitedBy: string
+  status: InvitationStatus
+  expiresAt: string
+}
+
+// ──────────────────────────────────────────
+// Category
+// ──────────────────────────────────────────
+
+export interface Category extends Timestamps {
   id: string
   name: string
   icon: string
@@ -48,29 +80,35 @@ export interface Category {
   isDefault: boolean
   workspaceId?: string
   userId?: string
-  createdAt: string
-  updatedAt: string
+  sortOrder?: number
+  isArchived?: boolean
 }
 
-export interface Transaction {
+// ──────────────────────────────────────────
+// Transaction
+// ──────────────────────────────────────────
+
+export interface Transaction extends Timestamps {
   id: string
   amount: number
+  currency: Currency
   type: TransactionType
   categoryId: string
   subcategory?: string
   description: string
   notes?: string
   tags: string[]
-  paymentMethod?: string
+  paymentMethod?: PaymentMethod
   transactionDate: string
   createdBy: string
   workspaceId?: string
   visibility: TransactionVisibility
-  isRecurring: boolean
+  isRecurring?: boolean
   recurringConfig?: RecurringConfig
+  isReconciled?: boolean
   receiptUrl?: string
-  createdAt: string
-  updatedAt: string
+  receiptFileName?: string
+
   category?: Category
   creator?: User
 }
@@ -80,21 +118,67 @@ export interface RecurringConfig {
   interval: number
   endDate?: string
   nextExecutionDate: string
+  maxExecutions?: number
+  executionsCount?: number
+  isPaused?: boolean
 }
 
-export interface Budget {
+export interface RecurringTransaction extends Timestamps, SoftDeletable {
+  id: string
+  transactionId?: string
+  amount: number
+  currency: Currency
+  type: TransactionType
+  categoryId: string
+  subcategory?: string
+  description: string
+  notes?: string
+  tags: string[]
+  paymentMethod?: PaymentMethod
+  createdBy: string
+  workspaceId?: string
+  visibility: TransactionVisibility
+  frequency: RecurrenceFrequency
+  interval: number
+  startDate: string
+  endDate?: string
+  lastExecuted?: string
+  nextExecution: string
+  maxExecutions?: number
+  executionsCount: number
+  isPaused: boolean
+  isActive: boolean
+
+  category?: Category
+  creator?: User
+}
+
+// ──────────────────────────────────────────
+// Budget
+// ──────────────────────────────────────────
+
+export interface Budget extends Timestamps {
   id: string
   categoryId: string
   workspaceId?: string
   userId: string
   amount: number
-  period: "weekly" | "monthly" | "yearly"
+  currency: Currency
+  period: BudgetPeriod
   startDate: string
   endDate?: string
-  createdAt: string
-  updatedAt: string
+  isAlertEnabled?: boolean
+  alertThreshold?: number
+
   category?: Category
+  spent?: number
+  remaining?: number
+  percentageUsed?: number
 }
+
+// ──────────────────────────────────────────
+// Activity & Notifications
+// ──────────────────────────────────────────
 
 export interface ActivityLog {
   id: string
@@ -103,10 +187,11 @@ export interface ActivityLog {
   type: ActivityType
   metadata: Record<string, unknown>
   createdAt: string
+  updatedAt: string
   user?: User
 }
 
-export interface Notification {
+export interface Notification extends Timestamps {
   id: string
   userId: string
   type: NotificationType
@@ -114,16 +199,23 @@ export interface Notification {
   message: string
   isRead: boolean
   actionUrl?: string
-  createdAt: string
+  actionLabel?: string
 }
+
+// ──────────────────────────────────────────
+// Aggregations & Queries
+// ──────────────────────────────────────────
 
 export interface DashboardStats {
   totalExpenses: number
   totalIncome: number
   totalCashback: number
   totalRefunds: number
+  totalDebt: number
+  netCashflow: number
   savingsRate: number
   transactionCount: number
+  recurringCount: number
 }
 
 export interface CategorySummary {
@@ -138,8 +230,11 @@ export interface CategorySummary {
 
 export interface MonthlyTrend {
   month: string
+  year: number
+  monthIndex: number
   expenses: number
   income: number
+  net: number
 }
 
 export interface TransactionFilters {
@@ -149,14 +244,21 @@ export interface TransactionFilters {
   endDate?: string
   search?: string
   tags?: string[]
-  paymentMethod?: string
+  paymentMethod?: PaymentMethod
   minAmount?: number
   maxAmount?: number
+  currency?: Currency
+  visibility?: TransactionVisibility
+  workspaceId?: string
+  createdBy?: string
+  isRecurring?: boolean
 }
 
 export interface PaginationParams {
   page: number
   limit: number
+  sortBy?: string
+  sortOrder?: "asc" | "desc"
 }
 
 export interface PaginatedResponse<T> {
@@ -165,4 +267,21 @@ export interface PaginatedResponse<T> {
   page: number
   limit: number
   totalPages: number
+  hasNextPage: boolean
+  hasPrevPage: boolean
+}
+
+// ──────────────────────────────────────────
+// API Response wrapper
+// ──────────────────────────────────────────
+
+export type ApiResult<T> =
+  | { success: true; data: T; message?: string }
+  | { success: false; error: AppError }
+
+export interface AppError {
+  code: string
+  message: string
+  details?: Record<string, string[]>
+  statusCode: number
 }
