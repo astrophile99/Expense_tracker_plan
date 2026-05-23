@@ -1,11 +1,13 @@
 "use client";
 
-import { ThemeProvider, QueryProvider } from "@/providers";
+import { ThemeProvider, QueryProvider, AuthProvider } from "@/providers";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <QueryProvider>{children}</QueryProvider>
+      <AuthProvider>
+        <QueryProvider>{children}</QueryProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
