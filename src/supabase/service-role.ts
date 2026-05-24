@@ -1,11 +1,17 @@
-import { createClient } from "@supabase/supabase-js"
-import { env } from "@/config/env"
+import { createClient } from "@supabase/supabase-js";
+import { publicEnv, getServerEnv } from "@/config/env";
 
 export function createServiceRoleClient() {
-  return createClient(env.supabase.url, env.supabase.serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
+  const serverEnv = getServerEnv();
+
+  return createClient(
+    publicEnv.supabase.url,
+    serverEnv.supabase.serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
     },
-  })
+  );
 }

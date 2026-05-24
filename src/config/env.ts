@@ -1,15 +1,33 @@
-function getEnv(name: string): string {
-  const value = process.env[name]
+function requireEnv(value: string | undefined, name: string): string {
   if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
+    throw new Error(`Missing required environment variable: ${name}`);
   }
-  return value
+
+  return value;
 }
 
-export const env = {
+export const publicEnv = {
   supabase: {
-    url: getEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    anonKey: getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    serviceRoleKey: getEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    url: requireEnv(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      "NEXT_PUBLIC_SUPABASE_URL",
+    ),
+
+    anonKey: requireEnv(
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    ),
   },
-} as const
+} as const;
+
+// IMPORTANT: lazy getter (NOT immediate execution)
+export function getServerEnv() {
+  return {
+    supabase: {
+      serviceRoleKey: requireEnv(
+        process.env.SUPABASE_SERVICE_ROLE_KEY,
+        "SUPABASE_SERVICE_ROLE_KEY",
+      ),
+    },
+  };
+}
